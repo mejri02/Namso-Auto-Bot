@@ -3,6 +3,7 @@ import json
 import time
 import sys
 import uuid
+import random
 from datetime import datetime, timezone, timedelta
 
 class Col:
@@ -17,6 +18,20 @@ FARM_INTERVAL = 60
 CHECKIN_INTERVAL = 86400
 active_users = []
 MIN_SYNC_INTERVAL = 300
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
+]
+
+def get_random_user_agent():
+    return random.choice(USER_AGENTS)
+
+def get_random_delay(min_seconds=0.5, max_seconds=3.0):
+    return random.uniform(min_seconds, max_seconds)
 
 def read_file_lines(filename):
     try:
@@ -60,34 +75,43 @@ def perform_dashboard_login(email, password, proxy):
         "content-type": "application/json",
         "origin": "https://app.namso.network",
         "referer": "https://app.namso.network/",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "user-agent": get_random_user_agent(),
     }
     session.headers.update(headers)
     url_login = "https://app.namso.network/login.php"
     
     masked_email = mask_email(email)
     masked_proxy = mask_proxy(proxy)
-    print(f"{Col.CYAN}--- [1] Login Dashboard: {masked_email} | IP: {masked_proxy} ---{Col.RESET}")
+    print(f"{Col.CYAN}--- [1] Dashboard Login: {masked_email} | IP: {masked_proxy} ---{Col.RESET}")
     
     try:
-        session.post(url_login, json={"email": email, "password": password, "action": "validate_credentials"})
-        session.post(url_login, json={"email": email, "action": "send_otp"})
-        print(f"    {Col.YELLOW}OTP Dikirim ke email.{Col.RESET}")
+        time.sleep(get_random_delay(0.5, 1.5))
         
-        otp_code = input(f"    {Col.YELLOW}Masukkan OTP untuk {masked_email}: {Col.RESET}")
+        session.post(url_login, json={"email": email, "password": password, "action": "validate_credentials"})
+        
+        time.sleep(get_random_delay(1.0, 2.0))
+        
+        session.post(url_login, json={"email": email, "action": "send_otp"})
+        print(f"    {Col.YELLOW}OTP sent to email.{Col.RESET}")
+        
+        time.sleep(get_random_delay(1.0, 3.0))
+        
+        otp_code = input(f"    {Col.YELLOW}Enter OTP for {masked_email}: {Col.RESET}")
+        
+        time.sleep(get_random_delay(0.5, 1.5))
         
         res3 = session.post(url_login, json={"email": email, "password": password, "otp": otp_code, "action": "login"})
         data = res3.json()
         
         if data.get("success") is True or data.get("status") == "success":
-            print(f"    {Col.GREEN}Dashboard Login Sukses!{Col.RESET}")
+            print(f"    {Col.GREEN}Dashboard Login Successful!{Col.RESET}")
             dashboard_token = data.get('token') or data.get('access_token')
             return session, dashboard_token
         else:
-            print(f"    {Col.RED}Dashboard Gagal: {data}{Col.RESET}")
+            print(f"    {Col.RED}Dashboard Failed: {data}{Col.RESET}")
             return None, None
     except Exception as e:
-        print(f"    {Col.RED}Error Dashboard: {e}{Col.RESET}")
+        print(f"    {Col.RED}Dashboard Error: {e}{Col.RESET}")
         return None, None
 
 def perform_extension_auth(email, password, proxy):
@@ -96,12 +120,14 @@ def perform_extension_auth(email, password, proxy):
         "accept": "*/*",
         "content-type": "application/json",
         "origin": "chrome-extension://ccdooaopgkfbikbdiekinfheklhbemcd",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "user-agent": get_random_user_agent(),
     }
     
     proxies_dict = {'http': proxy, 'https': proxy} if proxy else None
     
     try:
+        time.sleep(get_random_delay(0.5, 2.0))
+        
         res = requests.post(url, json={"email": email, "password": password}, headers=headers, proxies=proxies_dict, timeout=15)
         if res.status_code == 200:
             data = res.json()
@@ -128,14 +154,17 @@ def create_farming_session(token, proxy):
         "host": "sentry-api.namso.network",
         "origin": "chrome-extension://ccdooaopgkfbikbdiekinfheklhbemcd",
         "pragma": "no-cache",
-        "sec-ch-ua": '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+        "sec-ch-ua": random.choice([
+            '"Chromium";v="122", "Google Chrome";v="122", "Not_A Brand";v="99"',
+            '"Chromium";v="121", "Google Chrome";v="121", "Not_A Brand";v="99"',
+            '"Chromium";v="120", "Google Chrome";v="120", "Not_A Brand";v="99"',
+        ]),
         "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
+        "sec-ch-ua-platform": random.choice(['"Windows"', '"macOS"', '"Linux"']),
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "none",
-        "sec-fetch-storage-access": "active",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "user-agent": get_random_user_agent(),
     }
     session.headers.update(headers)
     return session
@@ -143,7 +172,7 @@ def create_farming_session(token, proxy):
 def setup_validator_node(session):
     base_info = {
         "device_id": str(uuid.uuid4()),
-        "version": "1.0.1",
+        "version": "1.0." + str(random.randint(1, 5)),
         "uptime": 0
     }
     
@@ -154,7 +183,7 @@ def setup_validator_node(session):
         headers = {
             "accept": "*/*",
             "accept-language": "en-US,en;q=0.9",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "user-agent": get_random_user_agent(),
         }
         
         if hasattr(session, 'proxies') and session.proxies:
@@ -166,7 +195,7 @@ def setup_validator_node(session):
             ip_address = r.json().get('ip')
             print(f"    {Col.GREEN}[Validator] IP: {ip_address}{Col.RESET}")
     except Exception as e:
-        print(f"    {Col.RED}[Validator] Error get IP: {e}{Col.RESET}")
+        print(f"    {Col.RED}[Validator] Error getting IP: {e}{Col.RESET}")
     
     if not ip_address:
         try:
@@ -283,6 +312,8 @@ def task_farming_and_monitor(user_data):
     try:
         elapsed_seconds = int(time.time() - user_data.get('start_time', time.time()))
         
+        time.sleep(get_random_delay(0.3, 1.0))
+        
         health_res = farm_session.post(url_health, timeout=15)
         
         if health_res.status_code == 401:
@@ -290,6 +321,8 @@ def task_farming_and_monitor(user_data):
             raise Exception("Token expired")
         
         payload = {"email": email}
+        
+        time.sleep(get_random_delay(0.5, 1.5))
         
         res_submit = farm_session.post(url_task, json=payload, timeout=15)
         
@@ -415,14 +448,14 @@ if __name__ == "__main__":
     
     raw_accs = read_file_lines("accounts.txt")
     if not raw_accs:
-        print(f"{Col.RED}File accounts.txt kosong!{Col.RESET}")
+        print(f"{Col.RED}File accounts.txt is empty!{Col.RESET}")
         sys.exit()
     
     raw_proxies = []
     if use_proxy:
         raw_proxies = read_file_lines("proxy.txt")
         if not raw_proxies:
-            print(f"{Col.YELLOW}Warning: proxy.txt kosong.{Col.RESET}\n")
+            print(f"{Col.YELLOW}Warning: proxy.txt is empty.{Col.RESET}\n")
             use_proxy = False
     
     for i, line in enumerate(raw_accs):
@@ -442,7 +475,7 @@ if __name__ == "__main__":
             else:
                 session_dash, dashboard_token = None, None
             
-            print(f"{Col.CYAN}--- [2] Login Extension ---{Col.RESET}")
+            print(f"{Col.CYAN}--- [2] Extension Login ---{Col.RESET}")
             token_ext = perform_extension_auth(email, password, current_proxy)
             
             final_token = dashboard_token if dashboard_token else token_ext
@@ -450,13 +483,13 @@ if __name__ == "__main__":
             session_farm = None
             geo_info = {}
             if final_token:
-                print(f"    {Col.GREEN}Login Sukses!{Col.RESET}")
+                print(f"    {Col.GREEN}Login Successful!{Col.RESET}")
                 session_farm = create_farming_session(final_token, current_proxy)
-                print(f"    {Col.YELLOW}Setup Node...{Col.RESET}")
+                print(f"    {Col.YELLOW}Setting up Node...{Col.RESET}")
                 geo_info = setup_validator_node(session_farm)
                 print(f"    {Col.GREEN}Ready! IP: {geo_info.get('ip')}{Col.RESET}\n")
             else:
-                print(f"    {Col.RED}Gagal Login.{Col.RESET}\n")
+                print(f"    {Col.RED}Login Failed.{Col.RESET}\n")
             
             user_data = {
                 "email": email,
@@ -473,13 +506,13 @@ if __name__ == "__main__":
             }
             active_users.append(user_data)
         else:
-            print(f"{Col.RED}Format salah di accounts.txt{Col.RESET}")
+            print(f"{Col.RED}Wrong format in accounts.txt{Col.RESET}")
     
     if not active_users:
         sys.exit()
     
-    print(f"{Col.CYAN}=== Loop Otomatis ({len(active_users)} Akun) ==={Col.RESET}")
-    print(f"{Col.YELLOW}Interval: {FARM_INTERVAL} detik{Col.RESET}\n")
+    print(f"{Col.CYAN}=== Auto Loop ({len(active_users)} Accounts) ==={Col.RESET}")
+    print(f"{Col.YELLOW}Interval: {FARM_INTERVAL} seconds{Col.RESET}\n")
     
     try:
         while True:
@@ -495,5 +528,5 @@ if __name__ == "__main__":
                     task_checkin(user)
                     user['next_checkin'] = current_time + CHECKIN_INTERVAL
             time.sleep(1)
-    except KyboardInterrupt:
-        print(f"\n{Col.RED}Bot dihentikan.{Col.RESET}")
+    except KeyboardInterrupt:
+        print(f"\n{Col.RED}Bot stopped.{Col.RESET}")
