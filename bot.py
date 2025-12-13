@@ -24,14 +24,10 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
 ]
 
 def get_random_user_agent():
     return random.choice(USER_AGENTS)
-
-def get_random_delay(min_seconds=0.5, max_seconds=3.0):
-    return random.uniform(min_seconds, max_seconds)
 
 def read_file_lines(filename):
     try:
@@ -64,10 +60,41 @@ def get_time():
     wib = timezone(timedelta(hours=7))
     return datetime.now(wib).strftime('%H:%M:%S')
 
+def parse_proxy(proxy_str):
+    if not proxy_str or not isinstance(proxy_str, str):
+        return None
+    
+    proxy_str = proxy_str.strip()
+    
+    if proxy_str.startswith(('http://', 'https://', 'socks4://', 'socks5://', 'socks://')):
+        return proxy_str
+    
+    try:
+        if "@" in proxy_str:
+            return f"socks5://{proxy_str}"
+        elif ":" in proxy_str:
+            parts = proxy_str.split(":")
+            if len(parts) == 2:
+                return f"socks5://{proxy_str}"
+            elif len(parts) == 4:
+                host, port, user, password = parts
+                return f"socks5://{user}:{password}@{host}:{port}"
+    except:
+        pass
+    
+    return None
+
 def perform_dashboard_login(email, password, proxy):
     session = requests.Session()
+    
     if proxy:
-        session.proxies.update({'http': proxy, 'https': proxy})
+        proxy_url = parse_proxy(proxy)
+        if proxy_url:
+            print(f"    {Col.YELLOW}Using proxy: {mask_proxy(proxy_url)}{Col.RESET}")
+            session.proxies.update({
+                'http': proxy_url,
+                'https': proxy_url
+            })
     
     headers = {
         "authority": "app.namso.network",
@@ -81,24 +108,15 @@ def perform_dashboard_login(email, password, proxy):
     url_login = "https://app.namso.network/login.php"
     
     masked_email = mask_email(email)
-    masked_proxy = mask_proxy(proxy)
+    masked_proxy = mask_proxy(proxy) if proxy else "Direct"
     print(f"{Col.CYAN}--- [1] Dashboard Login: {masked_email} | IP: {masked_proxy} ---{Col.RESET}")
     
     try:
-        time.sleep(get_random_delay(0.5, 1.5))
-        
         session.post(url_login, json={"email": email, "password": password, "action": "validate_credentials"})
-        
-        time.sleep(get_random_delay(1.0, 2.0))
-        
         session.post(url_login, json={"email": email, "action": "send_otp"})
         print(f"    {Col.YELLOW}OTP sent to email.{Col.RESET}")
         
-        time.sleep(get_random_delay(1.0, 3.0))
-        
         otp_code = input(f"    {Col.YELLOW}Enter OTP for {masked_email}: {Col.RESET}")
-        
-        time.sleep(get_random_delay(0.5, 1.5))
         
         res3 = session.post(url_login, json={"email": email, "password": password, "otp": otp_code, "action": "login"})
         data = res3.json()
@@ -123,11 +141,13 @@ def perform_extension_auth(email, password, proxy):
         "user-agent": get_random_user_agent(),
     }
     
-    proxies_dict = {'http': proxy, 'https': proxy} if proxy else None
+    proxies_dict = None
+    if proxy:
+        proxy_url = parse_proxy(proxy)
+        if proxy_url:
+            proxies_dict = {'http': proxy_url, 'https': proxy_url}
     
     try:
-        time.sleep(get_random_delay(0.5, 2.0))
-        
         res = requests.post(url, json={"email": email, "password": password}, headers=headers, proxies=proxies_dict, timeout=15)
         if res.status_code == 200:
             data = res.json()
@@ -135,13 +155,16 @@ def perform_extension_auth(email, password, proxy):
             if token:
                 return token
     except Exception as e:
-        pass
+        print(f"    {Col.RED}Extension Auth Error: {e}{Col.RESET}")
     return None
 
 def create_farming_session(token, proxy):
     session = requests.Session()
+    
     if proxy:
-        session.proxies.update({'http': proxy, 'https': proxy})
+        proxy_url = parse_proxy(proxy)
+        if proxy_url:
+            session.proxies.update({'http': proxy_url, 'https': proxy_url})
     
     headers = {
         "accept": "*/*",
@@ -157,10 +180,9 @@ def create_farming_session(token, proxy):
         "sec-ch-ua": random.choice([
             '"Chromium";v="122", "Google Chrome";v="122", "Not_A Brand";v="99"',
             '"Chromium";v="121", "Google Chrome";v="121", "Not_A Brand";v="99"',
-            '"Chromium";v="120", "Google Chrome";v="120", "Not_A Brand";v="99"',
         ]),
         "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": random.choice(['"Windows"', '"macOS"', '"Linux"']),
+        "sec-ch-ua-platform": random.choice(['"Windows"', '"macOS"']),
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "none",
@@ -169,6 +191,32 @@ def create_farming_session(token, proxy):
     session.headers.update(headers)
     return session
 
+def get_ip_with_proxy(session):
+    try:
+        test_urls = [
+            "https://api.ipify.org?format=json",
+            "https://api64.ipify.org?format=json",
+            "https://icanhazip.com",
+            "https://checkip.amazonaws.com"
+        ]
+        
+        for url in test_urls:
+            try:
+                response = session.get(url, timeout=10)
+                if response.status_code == 200:
+                    if "ipify" in url:
+                        ip_data = response.json()
+                        return ip_data.get('ip')
+                    else:
+                        return response.text.strip()
+            except:
+                continue
+                
+    except Exception as e:
+        print(f"    {Col.RED}[IP Check] Error: {e}{Col.RESET}")
+    
+    return None
+
 def setup_validator_node(session):
     base_info = {
         "device_id": str(uuid.uuid4()),
@@ -176,75 +224,35 @@ def setup_validator_node(session):
         "uptime": 0
     }
     
-    ip_address = None
+    ip_address = get_ip_with_proxy(session)
     
-    try:
-        temp_session = requests.Session()
-        headers = {
-            "accept": "*/*",
-            "accept-language": "en-US,en;q=0.9",
-            "user-agent": get_random_user_agent(),
-        }
+    if ip_address:
+        print(f"    {Col.GREEN}[Validator] IP: {ip_address}{Col.RESET}")
         
-        if hasattr(session, 'proxies') and session.proxies:
-            r = session.get("https://api.ipify.org?format=json", headers=headers, timeout=10)
-        else:
-            r = temp_session.get("https://api.ipify.org?format=json", headers=headers, timeout=10)
-        
-        if r.status_code == 200:
-            ip_address = r.json().get('ip')
-            print(f"    {Col.GREEN}[Validator] IP: {ip_address}{Col.RESET}")
-    except Exception as e:
-        print(f"    {Col.RED}[Validator] Error getting IP: {e}{Col.RESET}")
-    
-    if not ip_address:
         try:
-            if hasattr(session, 'proxies') and session.proxies:
-                r = session.get("https://ipinfo.io/json", headers=headers, timeout=10)
-            else:
-                r = requests.get("https://ipinfo.io/json", headers=headers, timeout=10)
-            
-            if r.status_code == 200:
-                data = r.json()
-                ip_address = data.get('ip')
-                print(f"    {Col.GREEN}[Validator] IP from ipinfo: {ip_address}{Col.RESET}")
+            geoloc_url = f"https://ipapi.co/{ip_address}/json/"
+            response = session.get(geoloc_url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                base_info.update({
+                    "ip": ip_address,
+                    "city": data.get('city', 'Unknown'),
+                    "region": data.get('region', 'Unknown'),
+                    "country": data.get('country_code', 'XX'),
+                    "country_name": data.get('country_name', 'Unknown'),
+                    "timezone": data.get('timezone', 'UTC')
+                })
+                print(f"    {Col.GREEN}[Validator] Location: {data.get('city', 'Unknown')}, {data.get('country_name', 'Unknown')}{Col.RESET}")
+                return base_info
         except:
             pass
-    
-    if not ip_address:
-        print(f"    {Col.RED}[Validator] CRITICAL: No IP detected!{Col.RESET}")
-        base_info.update({"ip": "0.0.0.0", "city": "Unknown", "country": "XX"})
-        return base_info
-    
-    try:
-        if hasattr(session, 'proxies') and session.proxies:
-            r = session.get(f"https://ipinfo.io/{ip_address}/json", headers=headers, timeout=10)
-        else:
-            r = requests.get(f"https://ipinfo.io/{ip_address}/json", headers=headers, timeout=10)
-        
-        if r.status_code == 200:
-            data = r.json()
-            base_info.update({
-                "ip": data.get('ip', ip_address),
-                "city": data.get('city', 'Unknown'),
-                "region": data.get('region', 'Unknown'),
-                "country": data.get('country', 'XX'),
-                "loc": data.get('loc', '0,0'),
-                "org": data.get('org', 'Unknown'),
-                "postal": data.get('postal', ''),
-                "timezone": data.get('timezone', 'UTC')
-            })
-            print(f"    {Col.GREEN}[Validator] Location: {data.get('city')}, {data.get('country')}{Col.RESET}")
-            return base_info
-    except Exception as e:
-        print(f"    {Col.RED}[Validator] Error geolocation: {e}{Col.RESET}")
+    else:
+        print(f"    {Col.YELLOW}[Validator] IP detection failed - using default{Col.RESET}")
     
     base_info.update({
-        "ip": ip_address,
+        "ip": "0.0.0.0",
         "city": "Unknown",
         "country": "XX",
-        "loc": "0,0",
-        "org": "Unknown",
         "timezone": "UTC"
     })
     return base_info
@@ -264,14 +272,21 @@ def task_checkin(user_data):
         if data.get("success") or "Success" in str(msg):
             color = Col.GREEN
             status = "✓ Success"
+            user_data['next_checkin'] = time.time() + CHECKIN_INTERVAL
+            msg = "Success! You've checked in today."
         elif "already" in str(msg).lower():
             color = Col.YELLOW
             status = "⏭ Already"
-            next_checkin_time = user_data.get('next_checkin', time.time())
-            remaining = int(next_checkin_time - time.time())
-            hours = remaining // 3600
-            minutes = (remaining % 3600) // 60
-            msg = f"Already checked in (Next in {hours}h {minutes}m)"
+            if 'next_checkin' not in user_data or user_data['next_checkin'] < time.time():
+                user_data['next_checkin'] = time.time() + CHECKIN_INTERVAL
+            
+            remaining = int(user_data['next_checkin'] - time.time())
+            if remaining > 0:
+                hours = remaining // 3600
+                minutes = (remaining % 3600) // 60
+                msg = f"Already checked in (Next in {hours}h {minutes}m)"
+            else:
+                msg = "Already checked in (Next in 24h)"
         else:
             color = Col.RED
             status = "✗ Failed"
@@ -310,10 +325,6 @@ def task_farming_and_monitor(user_data):
     points_today = "N/A"
     
     try:
-        elapsed_seconds = int(time.time() - user_data.get('start_time', time.time()))
-        
-        time.sleep(get_random_delay(0.3, 1.0))
-        
         health_res = farm_session.post(url_health, timeout=15)
         
         if health_res.status_code == 401:
@@ -321,8 +332,6 @@ def task_farming_and_monitor(user_data):
             raise Exception("Token expired")
         
         payload = {"email": email}
-        
-        time.sleep(get_random_delay(0.5, 1.5))
         
         res_submit = farm_session.post(url_task, json=payload, timeout=15)
         
@@ -332,7 +341,7 @@ def task_farming_and_monitor(user_data):
         
         if res_submit.status_code == 500:
             server_error = True
-            print(f"    {Col.RED}[Error] Server error (500) - Will retry next cycle{Col.RESET}")
+            print(f"    {Col.RED}[Error] Server error (500){Col.RESET}")
             raise Exception("Server error")
         
         if res_submit.status_code == 200:
@@ -360,7 +369,6 @@ def task_farming_and_monitor(user_data):
                 else:
                     print(f"    {Col.RED}[Error] {error_msg}{Col.RESET}")
         else:
-            server_error = True
             print(f"    {Col.RED}[Error] Status {res_submit.status_code}{Col.RESET}")
     
     except Exception as e:
@@ -371,8 +379,8 @@ def task_farming_and_monitor(user_data):
     if not farming_success:
         user_data['fail_count'] = user_data.get('fail_count', 0) + 1
         
-        if user_data['fail_count'] >= 1 and not need_relogin:
-            print(f"    {Col.YELLOW}[Warning] Failure detected - Forcing token refresh{Col.RESET}")
+        if user_data['fail_count'] >= 3 and not need_relogin:
+            print(f"    {Col.YELLOW}[Warning] Multiple failures - Forcing token refresh{Col.RESET}")
             need_relogin = True
             user_data['fail_count'] = 0
     else:
@@ -385,11 +393,10 @@ def task_farming_and_monitor(user_data):
             user_data['farm_session'] = create_farming_session(new_token, proxy)
             user_data['geo_info'] = setup_validator_node(user_data['farm_session'])
             user_data['start_time'] = time.time()
-            print(f"{Col.CYAN}[{get_time()}]{Col.RESET} {Col.GREEN}[SYSTEM]{Col.RESET} {masked} | Token Refreshed - Retrying...")
+            print(f"{Col.CYAN}[{get_time()}]{Col.RESET} {Col.GREEN}[SYSTEM]{Col.RESET} {masked} | Token Refreshed")
             
             try:
                 farm_session = user_data['farm_session']
-                health_res = farm_session.post(url_health, timeout=15)
                 payload = {"email": email}
                 res_submit = farm_session.post(url_task, json=payload, timeout=15)
                 
@@ -405,8 +412,6 @@ def task_farming_and_monitor(user_data):
                             next_sync_time = next_sync - int(time.time())
                             if next_sync_time > 0:
                                 user_data['optimal_interval'] = next_sync_time
-                        
-                        print(f"    {Col.GREEN}[Success] Retry succeeded after token refresh{Col.RESET}")
             except Exception as retry_err:
                 print(f"    {Col.RED}[Error] Retry failed: {str(retry_err)[:50]}{Col.RESET}")
     
@@ -431,10 +436,10 @@ def task_farming_and_monitor(user_data):
         next_interval = user_data.get('optimal_interval', MIN_SYNC_INTERVAL)
         print(f"{Col.CYAN}[{get_time()}]{Col.RESET} {Col.YELLOW}[FARMING]{Col.RESET} {Col.WHITE}{masked}{Col.RESET} | {Col.YELLOW}⏳ Rate Limited{Col.RESET} | Next sync in {next_interval}s | Uptime: {uptime_str}")
     elif server_error:
-        print(f"{Col.CYAN}[{get_time()}]{Col.RESET} {Col.YELLOW}[FARMING]{Col.RESET} {Col.WHITE}{masked}{Col.RESET} | {Col.RED}⚠ Server Error{Col.RESET} | Refreshing token... | Uptime: {uptime_str}")
+        print(f"{Col.CYAN}[{get_time()}]{Col.RESET} {Col.YELLOW}[FARMING]{Col.RESET} {Col.WHITE}{masked}{Col.RESET} | {Col.RED}⚠ Server Error{Col.RESET} | Will retry next cycle | Uptime: {uptime_str}")
     else:
         status_text = "Token Expired" if need_relogin else "✗ Failed"
-        print(f"{Col.CYAN}[{get_time()}]{Col.RESET} {Col.YELLOW}[FARMING]{Col.RESET} {Col.WHITE}{masked}{Col.RESET} | {Col.RED}{status_text}{Col.RESET} | Refreshing token... | Uptime: {uptime_str}")
+        print(f"{Col.CYAN}[{get_time()}]{Col.RESET} {Col.YELLOW}[FARMING]{Col.RESET} {Col.WHITE}{masked}{Col.RESET} | {Col.RED}{status_text}{Col.RESET} | Will retry | Uptime: {uptime_str}")
 
 if __name__ == "__main__":
     print(f"\n{Col.CYAN}=== NAMSO BOT: AUTO FARMING ==={Col.RESET}\n")
@@ -467,6 +472,7 @@ if __name__ == "__main__":
             current_proxy = None
             if use_proxy and i < len(raw_proxies):
                 current_proxy = raw_proxies[i]
+                print(f"{Col.YELLOW}Account {i+1} using: {mask_proxy(current_proxy)}{Col.RESET}")
             
             result = perform_dashboard_login(email, password, current_proxy)
             
@@ -499,34 +505,7 @@ if __name__ == "__main__":
                 "farm_session": session_farm,
                 "geo_info": geo_info,
                 "start_time": time.time(),
-                "next_checkin": time.time(),
+                "next_checkin": time.time() + CHECKIN_INTERVAL,
                 "next_farm": time.time(),
                 "optimal_interval": FARM_INTERVAL,
-                "fail_count": 0
-            }
-            active_users.append(user_data)
-        else:
-            print(f"{Col.RED}Wrong format in accounts.txt{Col.RESET}")
-    
-    if not active_users:
-        sys.exit()
-    
-    print(f"{Col.CYAN}=== Auto Loop ({len(active_users)} Accounts) ==={Col.RESET}")
-    print(f"{Col.YELLOW}Interval: {FARM_INTERVAL} seconds{Col.RESET}\n")
-    
-    try:
-        while True:
-            current_time = time.time()
-            for user in active_users:
-                if current_time >= user['next_farm']:
-                    task_farming_and_monitor(user)
-                    
-                    interval = user.get('optimal_interval', FARM_INTERVAL)
-                    user['next_farm'] = current_time + interval
-                
-                if user['session'] and current_time >= user['next_checkin']:
-                    task_checkin(user)
-                    user['next_checkin'] = current_time + CHECKIN_INTERVAL
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print(f"\n{Col.RED}Bot stopped.{Col.RESET}")
+              
