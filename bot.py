@@ -7,15 +7,14 @@ import random
 import threading
 from datetime import datetime
 
-# Vibrant Color Palette
 class Col:
-    G = '\033[92m'  # Green
-    R = '\033[91m'  # Red
-    Y = '\033[93m'  # Yellow
-    C = '\033[96m'  # Cyan
-    M = '\033[95m'  # Magenta
-    W = '\033[97m'  # White
-    B = '\033[94m'  # Blue
+    G = '\033[92m'
+    R = '\033[91m'
+    Y = '\033[93m'
+    C = '\033[96m'
+    M = '\033[95m'
+    W = '\033[97m'
+    B = '\033[94m'
     RESET = '\033[0m'
     BOLD = '\033[1m'
 
@@ -107,7 +106,6 @@ def user_thread_loop(user):
     while True:
         now = time.time()
         
-        # 1. Daily Check-in Logic
         if now >= user['next_checkin']:
             try:
                 if user['session']:
@@ -118,7 +116,6 @@ def user_thread_loop(user):
                 log_msg(Col.R, "DAILY", user['email'], "Failed check-in")
             user['next_checkin'] = now + CHECKIN_INTERVAL
 
-        # 2. Optimized Farming (Fast & Smart)
         if now >= user['next_farm']:
             try:
                 url_task = "https://sentry-api.namso.network/devv/api/taskSubmit"
@@ -131,13 +128,10 @@ def user_thread_loop(user):
                         pts = data.get('points_today', 0)
                         log_msg(Col.G, "FARM", user['email'], f"SHARES: {Col.G}{shares} {Col.W}| PTS: {Col.Y}{pts}")
                         
-                        # Sync perfectly with server timestamp
                         next_sync = data.get('next_sync')
                         wait_time = (next_sync - int(now)) if next_sync else MIN_SYNC_INTERVAL
-                        # Added small random delay (3-7s) to prevent 'Too Frequent' errors
                         user['next_farm'] = now + max(wait_time, 5) + random.randint(3, 7)
                     else:
-                        # Server limit detected: Wait 120s to reset
                         err = data.get('error', 'Sync too frequent')
                         user['next_farm'] = now + 120 
                         log_msg(Col.Y, "WAIT", user['email'], f"{Col.Y}{err} (Auto-reset in 120s)")
@@ -214,4 +208,3 @@ if __name__ == "__main__":
 
     while True:
         time.sleep(1)
-
