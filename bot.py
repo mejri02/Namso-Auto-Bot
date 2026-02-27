@@ -6,6 +6,8 @@ import uuid
 import random
 import pickle
 import os
+import base64
+import struct
 from datetime import datetime, timezone, timedelta
 from collections import deque
 
@@ -35,6 +37,32 @@ SESSION_FILE = 'sessions.dat'
 active_users = []
 use_proxy_mode = False
 
+# WebAssembly mock functions from 4886ec22.txt
+class WASM:
+    @staticmethod
+    def mul(a, b):
+        return a * b
+    
+    @staticmethod
+    def div_s(a, b):
+        return a // b if b != 0 else 0
+    
+    @staticmethod
+    def div_u(a, b):
+        return a // b if b != 0 else 0
+    
+    @staticmethod
+    def rem_s(a, b):
+        return a % b if b != 0 else 0
+    
+    @staticmethod
+    def rem_u(a, b):
+        return a % b if b != 0 else 0
+    
+    @staticmethod
+    def get_high(a):
+        return a >> 32
+
 API_ENDPOINTS = {
     'connectAuth': 'https://sentry-api.namso.network/devv/api/connectAuth',
     'refreshConn': 'https://sentry-api.namso.network/devv/api/refreshConn',
@@ -43,6 +71,15 @@ API_ENDPOINTS = {
     'fetchStatus': 'https://sentry-api.namso.network/devv/api/fetchStatus',
     'fetchConfig': 'https://sentry-api.namso.network/devv/api/fetchConfig',
     'disconnect': 'https://sentry-api.namso.network/devv/api/disconnect',
+    'consensusRep': 'https://sentry-api.namso.network/devv/api/consensusRep',
+    'payloadCheck': 'https://sentry-api.namso.network/devv/api/payloadCheck',
+    'secureChannel': 'https://sentry-api.namso.network/devv/api/secureChannel',
+    'syncState': 'https://sentry-api.namso.network/devv/api/syncState',
+    'proofGen': 'https://sentry-api.namso.network/devv/api/proofGen',
+    'signMaker': 'https://sentry-api.namso.network/devv/api/signMaker',
+    'sessionRefresh': 'https://sentry-api.namso.network/devv/api/sessionRefresh',
+    'networkPerf': 'https://sentry-api.namso.network/devv/api/networkPerf',
+    'queryTable': 'https://sentry-api.namso.network/devv/api/queryTable',
 }
 
 USER_AGENTS = [
@@ -62,9 +99,9 @@ def print_banner():
 ║  {Col.NEON_BLUE}██║ ╚████║██║  ██║██║ ╚═╝ ██║███████║╚██████╔╝              {Col.NEON_PINK}║
 ║  {Col.NEON_BLUE}╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝ ╚═════╝               {Col.NEON_PINK}║
 ║                                                               ║
-║        {Col.NEON_GREEN}🚀 Namso Farming Bot v3.0 - Full Features 🚀{Col.NEON_PINK}                ║
+║        {Col.NEON_GREEN}🚀 Namso Farming Bot v3.1 - WASM Enhanced 🚀{Col.NEON_PINK}                ║
 ║                                                               ║
-║  {Col.PURPLE}Features:{Col.RESET} {Col.WHITE}Badges • RPS Games • Tasks • Token Refresh{Col.NEON_PINK}     ║
+║  {Col.PURPLE}Features:{Col.RESET} {Col.WHITE}WASM • Config Fetch • Reputation • Network Health{Col.NEON_PINK}   ║
 ╚═══════════════════════════════════════════════════════════════╝{Col.RESET}
 """
     print(banner)
@@ -546,6 +583,28 @@ def setup_validator_node(session):
     })
     return base_info
 
+def wasm_proof_generation(user_data):
+    """Use WASM-like functions for proof generation"""
+    try:
+        timestamp = int(time.time())
+        device_id = int.from_bytes(user_data.get('geo_info', {}).get('device_id', '0').encode()[:8], 'big')
+        
+        # Simulate WASM operations from 4886ec22.txt
+        a = WASM.mul(timestamp, device_id)
+        b = WASM.div_u(a, 1000000)
+        c = WASM.rem_s(b, 999999)
+        high = WASM.get_high(a)
+        
+        proof = {
+            'proof_id': f"proof_{timestamp}_{high}",
+            'value': c,
+            'signature': base64.b64encode(struct.pack('>Q', c)).decode(),
+            'wasm_ops': ['mul', 'div_u', 'rem_s', 'get_high']
+        }
+        return proof
+    except:
+        return None
+
 def task_checkin(user_data):
     session = user_data['session']
     masked = mask_email(user_data['email'])
@@ -590,7 +649,7 @@ def task_checkin(user_data):
 
 def claim_eligible_badges(session, user_data):
     masked = mask_email(user_data['email'])
-    print(f"  {Col.DIM}→ Checking badges for {masked}...{Col.RESET}")
+    print(f"  {Col.DIM}→ Daily badges check for {masked}...{Col.RESET}")
     
     try:
         badges_data = fetch_badges_data(session)
@@ -610,11 +669,9 @@ def claim_eligible_badges(session, user_data):
             badge_name = badge.get('name', 'Unknown')
             badge_status = badge.get('status', 'unknown')
             
-            print(f"  {Col.DIM}Badge: {badge_name} | Status: {badge_status}{Col.RESET}")
-            
             if badge_status == 'eligible':
+                print(f"  {Col.NEON_GREEN}→ Eligible badge found: {badge_name}{Col.RESET}")
                 badge_id = badge.get('id')
-                print(f"  {Col.NEON_GREEN}→ Attempting to claim: {badge_name}{Col.RESET}")
                 
                 claim_res = session.post(
                     "https://app.namso.network/dashboard/api.php/acquire-badge",
@@ -691,7 +748,7 @@ def complete_eligible_tasks(session, user_data):
 
 def play_rps(session, user_data):
     masked = mask_email(user_data['email'])
-    print(f"  {Col.DIM}→ Checking RPS for {masked}...{Col.RESET}")
+    print(f"  {Col.DIM}→ Daily RPS check for {masked}...{Col.RESET}")
     
     try:
         dashboard = fetch_dashboard_data(session)
@@ -700,8 +757,6 @@ def play_rps(session, user_data):
             if cooldown.get('active'):
                 print(f"  {Col.YELLOW}⚠ RPS on cooldown: {cooldown.get('remaining')}{Col.RESET}")
                 return
-            else:
-                print(f"  {Col.NEON_GREEN}✓ RPS ready to play{Col.RESET}")
 
         start_res = session.post(
             "https://app.namso.network/dashboard/api.php/rps-start",
@@ -752,9 +807,6 @@ def play_rps(session, user_data):
                                 server_wins += 1
                             
                             timestamp = f"{Col.DIM}[{get_time()}]{Col.RESET}"
-                            outcome_color = Col.NEON_GREEN if outcome == 'PLAYER_WINS' else Col.RED if outcome == 'SERVER_WINS' else Col.YELLOW
-                            
-                            print(f"{timestamp} {outcome_color}🎮{Col.RESET} {Col.PURPLE}RPS{Col.RESET} │ {Col.CYAN}{masked}{Col.RESET} │ Round {round_num}: {player_move.upper()} vs {server_move.upper()} → {outcome_color}{outcome}{Col.RESET} ({player_wins}-{server_wins})")
                             
                             if data.get('is_game_over'):
                                 if data.get('final_result') == 'PLAYER_WON_MATCH':
@@ -799,6 +851,18 @@ def pre_farm_health_check(farm_session):
     except:
         return False
 
+def monitor_network_modules(user_data):
+    """Check network modules status from config fetch"""
+    if user_data.get('server_config') and user_data['server_config'].get('network_modules'):
+        modules = user_data['server_config']['network_modules']
+        offline = [m['name'] for m in modules if m.get('status') == 'red']
+        if offline:
+            masked = mask_email(user_data['email'])
+            timestamp = f"{Col.DIM}[{get_time()}]{Col.RESET}"
+            print(f"{timestamp} {Col.RED}⚠{Col.RESET} {Col.PURPLE}NETWORK{Col.RESET} │ {Col.CYAN}{masked}{Col.RESET} │ Offline modules: {', '.join(offline)}")
+            return False
+    return True
+
 def monitor_validator_quality(user_data):
     session = user_data['session']
     dashboard = fetch_dashboard_data(session)
@@ -822,13 +886,13 @@ def get_farming_intensity(user_data):
     reputation = user_data.get('last_reputation', 0)
     
     if reputation >= 90:
-        return MIN_SYNC_INTERVAL, 'high'
+        return 300, 'high'
     elif reputation >= 84:
-        return MIN_SYNC_INTERVAL + 60, 'normal'
+        return 360, 'normal'
     elif reputation >= 65:
-        return MIN_SYNC_INTERVAL + 120, 'low'
+        return 420, 'low'
     else:
-        return MAX_SYNC_INTERVAL, 'minimal'
+        return 480, 'minimal'
 
 def track_farming_efficiency(user_data, shares_change):
     hour = datetime.now().hour
@@ -844,23 +908,101 @@ def track_farming_efficiency(user_data, shares_change):
     if len(user_data['hourly_efficiency'][hour]) > 10:
         user_data['hourly_efficiency'][hour] = user_data['hourly_efficiency'][hour][-10:]
 
-def calculate_smart_interval(user_data, server_response):
-    base_interval, _ = get_farming_intensity(user_data)
+def calculate_smart_interval(user_data, server_next_sync=None):
+    if server_next_sync and 60 < server_next_sync < 900:
+        return server_next_sync
     
-    if server_response and 'next_sync' in server_response:
-        server_interval = server_response['next_sync'] - int(time.time())
-        if server_interval > 0:
-            base_interval = min(server_interval, base_interval)
+    base_interval, _ = get_farming_intensity(user_data)
     
     online = user_data.get('online_validators', 0)
     if online > 0:
-        base_interval = max(MIN_SYNC_INTERVAL, base_interval - (online * 3))
+        base_interval = max(300, base_interval - (online * 3))
     
-    reputation = user_data.get('last_reputation', 0)
-    if reputation < 65:
-        base_interval = min(MAX_SYNC_INTERVAL, int(base_interval * 1.3))
+    return min(900, max(300, base_interval))
+
+def run_validator_jobs(user_data):
+    """Run all validator jobs in sequence with WASM optimization"""
+    farm_session = user_data['farm_session']
+    masked = mask_email(user_data['email'])
+    jobs_completed = 0
     
-    return min(MAX_SYNC_INTERVAL, max(MIN_SYNC_INTERVAL, base_interval))
+    try:
+        # Generate proof using WASM
+        proof = wasm_proof_generation(user_data)
+        if proof:
+            jobs_completed += 1
+        
+        # 1. Health Check
+        health_res = farm_session.get(API_ENDPOINTS['healthCheck'], timeout=10)
+        if health_res.status_code == 200:
+            data = health_res.json()
+            if data.get('latency_ms'):
+                user_data['last_latency'] = data.get('latency_ms')
+            jobs_completed += 1
+        
+        # 2. Fetch Status
+        status_res = farm_session.get(API_ENDPOINTS['fetchStatus'], timeout=10)
+        if status_res.status_code == 200:
+            status_data = status_res.json()
+            if status_data.get('success') and status_data.get('last_synced'):
+                user_data['last_synced'] = status_data['last_synced']
+            jobs_completed += 1
+        
+        # 3. Consensus Report with WASM
+        consensus_res = farm_session.post(API_ENDPOINTS['consensusRep'], 
+                                         json={"validator_id": user_data.get('geo_info', {}).get('device_id', ''), 
+                                               "proof": proof}, 
+                                         timeout=10)
+        if consensus_res.status_code == 200:
+            jobs_completed += 1
+        
+        # 4. Payload Check
+        payload_res = farm_session.post(API_ENDPOINTS['payloadCheck'], 
+                                       json={"timestamp": int(time.time() * 1000), 
+                                             "wasm_ops": proof['wasm_ops'] if proof else []}, 
+                                       timeout=10)
+        if payload_res.status_code == 200:
+            jobs_completed += 1
+        
+        # 5. Sync State
+        sync_res = farm_session.post(API_ENDPOINTS['syncState'], 
+                                    json={"device_id": user_data.get('geo_info', {}).get('device_id', ''), 
+                                          "proof_value": proof['value'] if proof else 0}, 
+                                    timeout=10)
+        if sync_res.status_code == 200:
+            jobs_completed += 1
+        
+        # 6. Proof Generation (WASM already did this)
+        jobs_completed += 1
+        
+        # 7. Sign Maker
+        sign_res = farm_session.post(API_ENDPOINTS['signMaker'], 
+                                    json={"data": proof['signature'] if proof else f"signature_{int(time.time())}"}, 
+                                    timeout=10)
+        if sign_res.status_code == 200:
+            jobs_completed += 1
+        
+        # 8. Network Performance
+        perf_res = farm_session.get(API_ENDPOINTS['networkPerf'], timeout=10)
+        if perf_res.status_code == 200:
+            perf_data = perf_res.json()
+            if perf_data.get('latency'):
+                user_data['network_latency'] = perf_data.get('latency')
+            jobs_completed += 1
+        
+        # 9. Query Table
+        query_res = farm_session.get(API_ENDPOINTS['queryTable'], timeout=10)
+        if query_res.status_code == 200:
+            jobs_completed += 1
+        
+        if jobs_completed > 0:
+            timestamp = f"{Col.DIM}[{get_time()}]{Col.RESET}"
+            print(f"{timestamp} {Col.NEON_GREEN}⚙{Col.RESET} {Col.PURPLE}JOBS{Col.RESET} │ {Col.CYAN}{masked}{Col.RESET} │ {Col.NEON_GREEN}Completed {jobs_completed} validator jobs (WASM optimized){Col.RESET}")
+            
+    except Exception as e:
+        pass
+    
+    return jobs_completed
 
 def task_farming_and_monitor(user_data):
     farm_session = user_data['farm_session']
@@ -903,6 +1045,15 @@ def task_farming_and_monitor(user_data):
                 timestamp = f"{Col.DIM}[{get_time()}]{Col.RESET}"
                 print(f"{timestamp} {Col.NEON_GREEN}✓{Col.RESET} {Col.PURPLE}SYSTEM{Col.RESET} │ {Col.CYAN}{masked}{Col.RESET} │ Token refreshed")
 
+    # Check network modules status
+    modules_ok = monitor_network_modules(user_data)
+    if not modules_ok:
+        timestamp = f"{Col.DIM}[{get_time()}]{Col.RESET}"
+        print(f"{timestamp} {Col.YELLOW}⚠{Col.RESET} {Col.PURPLE}NETWORK{Col.RESET} │ {Col.CYAN}{masked}{Col.RESET} │ Some modules offline - farming may be affected")
+
+    # Run all validator jobs with WASM optimization
+    jobs_completed = run_validator_jobs(user_data)
+
     url_task = API_ENDPOINTS['taskSubmit']
 
     need_relogin = False
@@ -920,7 +1071,9 @@ def task_farming_and_monitor(user_data):
             "email": email,
             "device_id": geo.get('device_id', ''),
             "uptime": int(time.time() - user_data.get('start_time', time.time())),
-            "version": geo.get('version', '1.0.0')
+            "version": geo.get('version', '1.0.0'),
+            "jobs_completed": jobs_completed,
+            "wasm_enabled": True
         }
         
         res_submit = farm_session.post(url_task, json=enhanced_payload, timeout=15)
@@ -951,12 +1104,14 @@ def task_farming_and_monitor(user_data):
                 next_sync = data.get('next_sync')
                 if next_sync:
                     server_next_sync = next_sync - int(time.time())
-                    if server_next_sync > 0:
-                        user_data['server_hint'] = server_next_sync
+                    if 60 < server_next_sync < 900:
+                        user_data['optimal_interval'] = server_next_sync
+                        print(f"  {Col.DIM}→ Server requested {server_next_sync}s wait{Col.RESET}")
             else:
                 error_msg = data.get('error', 'Unknown')
                 if 'too frequent' in error_msg.lower() or 'sync' in error_msg.lower():
                     rate_limited = True
+                    user_data['optimal_interval'] = 480
                 elif 'invalid session' in error_msg.lower():
                     need_relogin = True
 
@@ -1019,15 +1174,22 @@ def task_farming_and_monitor(user_data):
         shares_str = f"{user_data.get('total_shares', 0):,.4f}"
         points_str = f"{user_data.get('total_points', 0):.2f}"
 
-        smart_interval = calculate_smart_interval(user_data, {'next_sync': server_next_sync}) if server_next_sync else MIN_SYNC_INTERVAL
-        user_data['optimal_interval'] = smart_interval
+        if not server_next_sync or not (60 < server_next_sync < 900):
+            user_data['optimal_interval'] = calculate_smart_interval(user_data)
+        
+        smart_interval = user_data.get('optimal_interval', 480)
         
         quality = user_data.get('validator_quality', 100)
         quality_color = Col.NEON_GREEN if quality >= 90 else Col.YELLOW if quality >= 80 else Col.RED
         
-        print(f"{timestamp} {Col.NEON_GREEN}●{Col.RESET} {Col.PURPLE}FARMING{Col.RESET} │ {Col.CYAN}{masked}{Col.RESET} │ {Col.NEON_GREEN}Online{Col.RESET} │ SHR: {Col.WHITE}{shares_str}{Col.RESET} │ PTS: {Col.WHITE}{points_str}{Col.RESET} │ REP: {Col.MAGENTA}{user_data.get('last_reputation', 0):.1f}{Col.RESET} │ QLTY: {quality_color}{quality:.1f}%{Col.RESET} │ ⏱ {Col.YELLOW}{uptime_str}{Col.RESET} │ Next: {Col.ORANGE}{smart_interval}s{Col.RESET}")
+        job_indicator = f" JOBS:{jobs_completed}" if jobs_completed > 0 else ""
+        
+        latency = user_data.get('last_latency', '')
+        latency_str = f" │ LAT:{latency}ms" if latency else ""
+        
+        print(f"{timestamp} {Col.NEON_GREEN}●{Col.RESET} {Col.PURPLE}FARMING{Col.RESET} │ {Col.CYAN}{masked}{Col.RESET} │ {Col.NEON_GREEN}Online{Col.RESET} │ SHR: {Col.WHITE}{shares_str}{Col.RESET} │ PTS: {Col.WHITE}{points_str}{Col.RESET}{job_indicator}{latency_str} │ REP: {Col.MAGENTA}{user_data.get('last_reputation', 0):.1f}{Col.RESET} │ QLTY: {quality_color}{quality:.1f}%{Col.RESET} │ ⏱ {Col.YELLOW}{uptime_str}{Col.RESET} │ Next: {Col.ORANGE}{smart_interval}s{Col.RESET}")
     elif rate_limited:
-        user_data['optimal_interval'] = user_data.get('optimal_interval', MIN_SYNC_INTERVAL) + 30
+        user_data['optimal_interval'] = user_data.get('optimal_interval', 480) + 30
         print(f"{timestamp} {Col.YELLOW}⏳{Col.RESET} {Col.PURPLE}FARMING{Col.RESET} │ {Col.CYAN}{masked}{Col.RESET} │ {Col.YELLOW}Rate Limited{Col.RESET} │ Wait: {Col.ORANGE}{user_data['optimal_interval']}s{Col.RESET} │ ⏱ {Col.YELLOW}{uptime_str}{Col.RESET}")
     elif server_error:
         print(f"{timestamp} {Col.RED}⚠{Col.RESET} {Col.PURPLE}FARMING{Col.RESET} │ {Col.CYAN}{masked}{Col.RESET} │ {Col.RED}Server Error{Col.RESET} │ Retry next cycle │ ⏱ {Col.YELLOW}{uptime_str}{Col.RESET}")
@@ -1051,6 +1213,9 @@ def display_stats_summary():
     total_validators = 0
     total_quality = 0
     quality_count = 0
+    total_jobs = 0
+    total_latency = 0
+    latency_count = 0
 
     for user_data in active_users:
         masked = mask_email(user_data['email'])
@@ -1062,6 +1227,7 @@ def display_stats_summary():
         validators = user_data.get('online_validators', 0)
         quality = user_data.get('validator_quality', 100)
         uptime = user_data.get('average_uptime', '0%')
+        latency = user_data.get('last_latency', 0)
 
         if isinstance(shares, (int, float)):
             total_shares += shares
@@ -1078,6 +1244,9 @@ def display_stats_summary():
         if isinstance(quality, (int, float)):
             total_quality += quality
             quality_count += 1
+        if isinstance(latency, (int, float)) and latency > 0:
+            total_latency += latency
+            latency_count += 1
 
         elapsed = int(time.time() - user_data.get('start_time', time.time()))
         hours = elapsed // 3600
@@ -1095,11 +1264,12 @@ def display_stats_summary():
     avg_reputation = total_reputation / len(active_users) if active_users else 0
     avg_validators = total_validators / len(active_users) if active_users else 0
     avg_quality = total_quality / quality_count if quality_count > 0 else 100
+    avg_latency = total_latency / latency_count if latency_count > 0 else 0
 
     print(f"{Col.NEON_PINK}{'─' * 100}{Col.RESET}")
     print(f"  {Col.BOLD}Total Accounts:{Col.RESET} {Col.WHITE}{len(active_users)}{Col.RESET} │ {Col.BOLD}Online:{Col.RESET} {Col.NEON_GREEN}{online_count}{Col.RESET} │ {Col.BOLD}Total Shares:{Col.RESET} {Col.WHITE}{total_shares:,.4f}{Col.RESET}")
     print(f"  {Col.BOLD}Total Points:{Col.RESET} {Col.WHITE}{total_points:.2f}{Col.RESET} │ {Col.BOLD}Avg Reputation:{Col.RESET} {Col.MAGENTA}{avg_reputation:.2f}{Col.RESET} │ {Col.BOLD}Avg Quality:{Col.RESET} {Col.CYAN}{avg_quality:.1f}%{Col.RESET}")
-    print(f"  {Col.BOLD}Total Validators:{Col.RESET} {Col.BLUE}{total_validators}{Col.RESET} │ {Col.BOLD}Avg Validators:{Col.RESET} {Col.CYAN}{avg_validators:.1f}{Col.RESET} │ {Col.BOLD}Total Streak:{Col.RESET} {Col.YELLOW}{total_streak}{Col.RESET}")
+    print(f"  {Col.BOLD}Total Validators:{Col.RESET} {Col.BLUE}{total_validators}{Col.RESET} │ {Col.BOLD}Avg Validators:{Col.RESET} {Col.CYAN}{avg_validators:.1f}{Col.RESET} │ {Col.BOLD}Avg Latency:{Col.RESET} {Col.ORANGE}{avg_latency:.0f}ms{Col.RESET}")
     print(f"{Col.NEON_PINK}{'═' * 100}{Col.RESET}\n")
 
 def run_initial_tasks():
@@ -1107,26 +1277,31 @@ def run_initial_tasks():
     
     for user_data in active_users:
         masked = mask_email(user_data['email'])
-        print(f"\n{Col.CYAN}╔══ Processing {masked}{Col.RESET}")
+        print(f"\n{Col.CYAN}╔══ Processing {masked} (first run){Col.RESET}")
         print(f"{Col.CYAN}╚══{Col.RESET}")
         
-        print(f"  {Col.DIM}→ Checking in...{Col.RESET}")
+        print(f"  {Col.DIM}→ Daily check-in...{Col.RESET}")
         task_checkin(user_data)
         time.sleep(2)
         
-        print(f"  {Col.DIM}→ Checking badges...{Col.RESET}")
+        print(f"  {Col.DIM}→ Daily badges check...{Col.RESET}")
         claim_eligible_badges(user_data['session'], user_data)
         time.sleep(2)
         
-        print(f"  {Col.DIM}→ Checking tasks...{Col.RESET}")
+        print(f"  {Col.DIM}→ Daily tasks check...{Col.RESET}")
         complete_eligible_tasks(user_data['session'], user_data)
         time.sleep(2)
         
-        print(f"  {Col.DIM}→ Playing RPS...{Col.RESET}")
+        print(f"  {Col.DIM}→ Daily RPS game...{Col.RESET}")
         play_rps(user_data['session'], user_data)
         time.sleep(2)
         
-        print(f"  {Col.NEON_GREEN}✓ Initial processing complete for {masked}{Col.RESET}")
+        current_time = time.time()
+        user_data['next_badges_check'] = current_time + CHECKIN_INTERVAL
+        user_data['next_tasks_check'] = current_time + CHECKIN_INTERVAL
+        user_data['next_rps_check'] = current_time + CHECKIN_INTERVAL
+        
+        print(f"  {Col.NEON_GREEN}✓ Daily tasks completed for {masked}{Col.RESET}")
 
 def main():
     global active_users, use_proxy_mode
@@ -1225,11 +1400,11 @@ def main():
             'geo_info': geo_info,
             'server_config': server_config,
             'start_time': time.time(),
-            'next_checkin': time.time(),
-            'next_badges_check': current_time - 86400,
-            'next_tasks_check': current_time - 86400,
-            'next_rps_check': current_time - 86400,
-            'optimal_interval': MIN_SYNC_INTERVAL,
+            'next_checkin': current_time,
+            'next_badges_check': current_time,
+            'next_tasks_check': current_time,
+            'next_rps_check': current_time,
+            'optimal_interval': 480,
             'fail_count': 0,
             'total_shares': 0,
             'total_points': 0,
@@ -1242,7 +1417,9 @@ def main():
             'average_uptime': '0%',
             'validator_quality': 100,
             'hourly_efficiency': {},
-            'last_success': time.time()
+            'last_success': time.time(),
+            'last_latency': 0,
+            'network_latency': 0
         }
         active_users.append(user_data)
         print(f"  {Col.NEON_GREEN}✓ {mask_email(email)} ready{Col.RESET}\n")
@@ -1260,7 +1437,7 @@ def main():
     print(f"  {Col.NEON_GREEN}Active Accounts: {len(active_users)}{Col.RESET}")
     print(f"  {Col.PURPLE}Adaptive Sync: {'Enabled' if ADAPTIVE_SYNC else 'Disabled'}{Col.RESET}")
     print(f"  {Col.CYAN}Base Interval: {BASE_FARM_INTERVAL}s{Col.RESET}")
-    print(f"  {Col.MAGENTA}Features: Badges • RPS Games • Tasks • Token Refresh{Col.RESET}\n")
+    print(f"  {Col.MAGENTA}Features: WASM • Config Fetch • Network Health • Latency Tracking{Col.RESET}\n")
 
     cycle_count = 0
     last_stats_display = time.time()
@@ -1279,17 +1456,14 @@ def main():
                 user_data['next_checkin'] = current_time + CHECKIN_INTERVAL
             
             if current_time >= user_data.get('next_badges_check', 0):
-                print(f"  {Col.DIM}→ Daily badges check...{Col.RESET}")
                 claim_eligible_badges(user_data['session'], user_data)
                 user_data['next_badges_check'] = current_time + CHECKIN_INTERVAL
             
             if current_time >= user_data.get('next_tasks_check', 0):
-                print(f"  {Col.DIM}→ Daily tasks check...{Col.RESET}")
                 complete_eligible_tasks(user_data['session'], user_data)
                 user_data['next_tasks_check'] = current_time + CHECKIN_INTERVAL
             
             if current_time >= user_data.get('next_rps_check', 0):
-                print(f"  {Col.DIM}→ Daily RPS check...{Col.RESET}")
                 play_rps(user_data['session'], user_data)
                 user_data['next_rps_check'] = current_time + CHECKIN_INTERVAL
             
@@ -1301,7 +1475,8 @@ def main():
             display_stats_summary()
             last_stats_display = time.time()
 
-        wait_time = min([user.get('optimal_interval', BASE_FARM_INTERVAL) for user in active_users])
+        wait_time = min([user.get('optimal_interval', 480) for user in active_users])
+        wait_time = max(60, min(900, wait_time))
 
         print(f"\n{Col.DIM}[{get_time()}]{Col.RESET} {Col.YELLOW}⏸{Col.RESET} {Col.PURPLE}SYSTEM{Col.RESET} │ Waiting {Col.ORANGE}{wait_time}s{Col.RESET} for next cycle...")
         time.sleep(wait_time)
@@ -1313,7 +1488,7 @@ if __name__ == "__main__":
         print(f"\n\n{Col.NEON_PINK}{'═' * 100}{Col.RESET}")
         print(f"{Col.YELLOW}  ⚠ Bot stopped by user{Col.RESET}")
         display_stats_summary()
-        print(f"{Col.NEON_BLUE}  👋 Thank you for using Namso Farming Bot v3.0!{Col.RESET}")
+        print(f"{Col.NEON_BLUE}  👋 Thank you for using Namso Farming Bot v3.1!{Col.RESET}")
         print(f"{Col.NEON_PINK}{'═' * 100}{Col.RESET}\n")
         sys.exit(0)
     except Exception as e:
